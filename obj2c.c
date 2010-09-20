@@ -10,13 +10,17 @@
  * doesn't handle material properties,
  * depends on vertices, normals, etc being grouped together
  * names of arrays and generated file depend on the base name of the obj file
+ *
+ * not yet complete--doesn't handle texcoords, for instance
  */
 
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <stdbool.h>
+
 
 /* counts occurences of a certain character in a string */
 int strchrct(const char *s, const char c)
@@ -33,19 +37,63 @@ int strchrct(const char *s, const char c)
   return count;
 }
 
+void print_preamble(FILE * pfile, char * funcname)
+{
+  /* put in something about generated with obj2c, etc */
+  fprintf(pfile, "/* %s.c\n * generated wtih obj2.c from %s.obj\n */\n\n",
+	 funcname, funcname);
+  fprintf(pfile, "#include \"%s.h\"\n\n", funcname);
+
+  fprintf(pfile, "void draw%s(void)\n{\n", funcname);
+}
+
+void print_hfile( char * funcname )
+{
+  char hfilename[128];
+  char ufuncname[128];
+  FILE * hfile;
+  int length, itor;
+
+  memset(hfilename, 0, 128);
+  strcpy(hfilename, funcname); strcat(hfilename, ".h");
+  if ((hfile = fopen(hfilename, "w")) == (FILE *)NULL)
+  {
+    fprintf(stderr, "Cannot create file %s, printing to stdout\n", hfilename);
+    hfile = stdout;
+  }
+  length = strlen(funcname);
+  memset(ufuncname, 0, 128);
+  for (itor = 0; itor < length; itor++)
+    {
+      ufuncname[itor] = toupper(funcname[itor]);
+    }
+  fprintf(hfile, "/* %s\n * generated wtih obj2.c from %s.obj\n */\n\n",
+	 hfilename, funcname);
+  fprintf(hfile, "#ifndef _%s_H_\n#define _%s_H_\n\n",
+	  ufuncname, ufuncname);
+  fprintf(hfile, "#include <GL/gl.h>\n\n");
+  fprintf(hfile, "void draw%s(void);\n", funcname);
+  fprintf(hfile, "\n#endif\n");
+  fclose(hfile);
+
+}
+
 int main(int argc, char *argv[])
 {
   char * basename;
   char vname[128];
   char vtname[128];
   char vnname[128];
-  FILE * objfile;
+  char cfilename[128];
+  FILE * objfile, * cfile;
   char inputline[128];
   int facevcount;
-  char * inputtoken;
-  char delims[] = " ";
-  char state[2];
+  char *inputtoken, *inputtokenjr;
+  char *inputtokenptr, *inputtokenjrptr;
+  char delims[] = " ";  /* probably unneeded--just use literal as elsewhere */
+  char state[2]; /* probably unneeded--use counts */
   double outputval;
+  int vindex, vtindex, vnindex;
   int numverts = 0, numtexcoords = 0, numnorms = 0, numfaces = 0;
   fpos_t startfaces;
   bool saveposition = false;
@@ -63,28 +111,44 @@ int main(int argc, char *argv[])
     return;
   }
 
-  /* it would be better to malloc the needed space */
-  basename = strtok(strrchr(argv[1], '/') + 1, ".");
+  if (strpbrk(argv[1], "/") == NULL) basename = strtok(argv[1] + 1, ".");
+  else basename = strtok(strrchr(argv[1], '/') + 1, ".");
   if (strlen(basename) > 119)
     {
       fprintf(stderr, "Name of object is too long, exiting\n");
       return;
     }
-/*   printf("%s\n", argv[1]); */
-/*   if (strcmp (argv[1] + 1, "obj") != 0) */
-/*     { */
-/*       fprintf(stderr, "Not an OBJ file, exiting\n"); */
-/*       return; */
-/*     } */
-/*   strcpy (vname, basename); strcat (vname, "Vertices"); */
-/*   strcpy (vtname, basename); strcat (vtname, "Texcoords"); */
-/*   strcpy (vnname, basename); strcat (vnname, "Normals"); */
+  /* checks if extension is .obj, but not for a valid file */
+  inputtoken = strtok(NULL, ".");
+  if (strcmp (inputtoken, "obj") != 0)
+    {
+      fprintf(stderr, "Not an OBJ file, exiting\n");
+      return;
+    }
 
+  /* it would be better to malloc the needed space for all these names*/
+  memset(vname, 0, 128);
+  memset(vtname, 0, 128);
+  memset(vnname, 0, 128);
+  memset(cfilename, 0, 128);
+  strcpy (vname, basename); strcat (vname, "Vertices");
+  strcpy (vtname, basename); strcat (vtname, "Texcoords");
+  strcpy (vnname, basename); strcat (vnname, "Normals");
+  strcpy (cfilename, basename); strcat (cfilename, ".c");
+
+  print_hfile(basename);
+  if ((cfile = fopen(cfilename, "w")) == (FILE *)NULL)
+  {
+    fprintf(stderr, "Cannot create file %s, printing to stdout\n", cfilename);
+    cfile = stdout;
+  }
+
+  print_preamble(cfile, basename);
   strcpy(state, "st");
   while(fgets(inputline, 255, objfile)!=NULL)
   {
    facevcount = strchrct(inputline, ' ');
-      inputtoken = strtok(inputline, delims);
+   inputtoken = strtok_r(inputline, delims, &inputtokenptr);
 
       if(strcmp(inputtoken, "v") == 0)
 	{
@@ -92,19 +156,19 @@ int main(int argc, char *argv[])
 	    {
 	      memset(state, 0, 2);
 	      strcpy(state, "v");
-	      printf("GLfloat %sVertices[][3] = {\n", basename);
+	      fprintf(cfile, "GLfloat %s[][3] = {\n", vname);
 	    }
-	  if (numverts != 0) printf(",\n");
-	  printf("  {");
+	  if (numverts != 0) fprintf(cfile, ",\n");
+	  fprintf(cfile, "  {");
           for (itor = 0; itor < 3; itor++)
 	    {
-             inputtoken = strtok(NULL, delims);
+	      inputtoken = strtok_r(NULL, delims, &inputtokenptr);
 	     /* conversion gets rid of extraneous newlines */
              outputval = atof(inputtoken);
-             printf("%f", outputval); 
-	     if (itor < 2) printf(", ");
+             fprintf(cfile, "%f", outputval); 
+	     if (itor < 2) fprintf(cfile, ", ");
             }
-	  printf("}");
+	  fprintf(cfile, "}");
           numverts++;  
         }  /* vertices case */
 
@@ -117,19 +181,19 @@ int main(int argc, char *argv[])
 	    {
 	      memset(state, 0, 2);
 	      strcpy(state, "vn");
-	      printf("};\n\nGLfloat %sNormals[][3] = {\n", basename);
+	      fprintf(cfile, "};\n\nGLfloat %s[][3] = {\n", vnname);
 	    }
-	  if (numnorms != 0) printf(",\n");
-	  printf("  {");
+	  if (numnorms != 0) fprintf(cfile, ",\n");
+	  fprintf(cfile, "  {");
           for (itor = 0; itor < 3; itor++)
 	    {
-             inputtoken = strtok(NULL, delims);
+	      inputtoken = strtok_r(NULL, delims, &inputtokenptr);
 	     /* conversion gets rid of extraneous newlines */
              outputval = atof(inputtoken);
-             printf("%f", outputval); 
-	     if (itor < 2) printf(", ");
+             fprintf(cfile, "%f", outputval); 
+	     if (itor < 2) fprintf(cfile, ", ");
             }
-	  printf("}");
+	  fprintf(cfile, "}");
           numnorms++;  
         }  /* normals case */
 
@@ -139,28 +203,62 @@ int main(int argc, char *argv[])
 	    {
 	      memset(state, 0, 2);
 	      strcpy(state, "f");
-	      printf("};\n\n");
+	      fprintf(cfile, "};\n\n");
+	      fprintf(cfile, "  glBegin(GL_QUADS);\n");
 	      saveposition = true;
 	    }
-	  if (facevcount == 3) numfaces++;
+	  if (facevcount == 4)
+	    {
+	      for(itor = 0; itor < 4; itor++)
+		{
+		  inputtoken = strtok_r(NULL, delims, &inputtokenptr);
+		  vindex = atoi(strtok_r(inputtoken, "/", &inputtokenjrptr))-1;
+/* 		  vtindex = strtok_r(NULL, "/", &inputtokenjrptr); */
+		  vnindex = atoi(strtok_r(NULL, "/", &inputtokenjrptr)) - 1;
 
-	}  /* faces case -- first (triangles) pass */
+		  fprintf(cfile, "  glNormal3fv(%s[%d]); glVertex3fv(%s[%d]);\n",
+			 vnname, vnindex, vname, vindex);
+		}
+
+	      numfaces++;
+	    }
+
+	}  /* faces case -- first (quads) pass */
     if (saveposition == false) fgetpos(objfile, &startfaces);
 
   } /* first loop over lines in the input file */
 
+
+  fprintf(cfile, "  glEnd();\n\n");
+  fprintf(cfile, "  glBegin(GL_TRIANGLES);\n");
   fsetpos(objfile, &startfaces);
   while(fgets(inputline, 255, objfile)!=NULL)
     {
       facevcount = strchrct(inputline, ' ');
-      inputtoken = strtok(inputline, delims);
+      inputtoken = strtok_r(inputline, delims, &inputtokenptr);
       if (strcmp(inputtoken, "f") == 0)
 	{
-	  if (facevcount == 4) numfaces++;
+	  if (facevcount == 3)
+         {
+ 	      for(itor = 0; itor < 3; itor++)
+		{
+		  inputtoken = strtok_r(NULL, delims, &inputtokenptr);
+		  vindex = atoi(strtok_r(inputtoken, "/", &inputtokenjrptr))-1;
+/* 		   = strtok_r(NULL, "/", &inputtokenjrptr); */
+		  vnindex = atoi(strtok_r(NULL, "/", &inputtokenjrptr)) - 1;
+
+		  fprintf(cfile, "  glNormal3fv(%s[%d]); glVertex3fv(%s[%d]);\n",
+			 vnname, vnindex, vname, vindex);
+		}
+
+          numfaces++;
+          }
 	}
     } /* second loop over last of input file == faces case, triangles pass */
+  fprintf(cfile, "  glEnd();\n}\n");
   
   fclose(objfile);
+  fclose(cfile);
     printf("\nMembers found: %d vertices, %d texture coordinates, %d normals, %d faces\n", numverts, numtexcoords, numnorms, numfaces);
 
   return 0;
@@ -177,8 +275,20 @@ int main(int argc, char *argv[])
  * this function just calls a display list (?? teapot doesn't)
  */ 
 
+/* strtok_r doesn't return empty string -- fix
+ * if two delimiters occur next to each other, no token is seen between them
+ *
+ * will probably need to count slashes before processing
+ * for now, program assumes vertex//normal faces
+ */
+
 
 /* put in -h (help) */
 
-/* test for valid obj--segfaults on c file */
+
+/* there is a lot of reduncancy in generated drawing calls
+ * eventually, test for face normals, triangle fans/strips, etc
+ * will require caching and parsing of vertices
+ * also, generates an empty glBegin/end pair if mesh is all quads/triangles
+ */
 
