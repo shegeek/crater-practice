@@ -11,6 +11,8 @@
 #include <math.h>
 #include <GL/glut.h>
 
+#include "crater4.h"
+
 GLfloat angle, angle2;
 
 #define OVERTS 90
@@ -18,7 +20,7 @@ GLfloat angle, angle2;
 GLdouble outervertices[OVERTS][3];
 GLdouble hole1vertices[IVERTS][3];
 GLdouble hole2vertices[IVERTS][3];
-#define ORADIUS 20.0
+#define ORADIUS 30.0
 #define HOLE1RADIUS 2.5
 #define HOLE2RADIUS 4.5
 
@@ -124,8 +126,9 @@ GLvoid init(GLvoid)
 {
    GLUtesselator *tobj;
    GLfloat light_position[] = {0.0, -20., 20.0, 0.0};
-  GLfloat specular[] = {1., 1., 1., 1.};
-      GLfloat color[4] = {1., 1., 1., 1.};
+  GLfloat specular[] = {0.5, 0.5, 0.5, 1.};
+/*       GLfloat color[4] = {1., 1., 1., 1.}; */
+      GLfloat color[4] = {0.5, 0.5, 0.5, 1.};
       int i;
 
   glLightfv(GL_LIGHT0, GL_POSITION, light_position);
@@ -134,8 +137,8 @@ GLvoid init(GLvoid)
 
        angle = angle2 = 0.0;
  
- /*      glEnable(GL_NORMALIZE); */
-/*       glCullFace(GL_BACK); */
+      glEnable(GL_NORMALIZE);
+      glCullFace(GL_BACK);
 /*       glFrontFace(GL_CCW); */
 /*       glEnable(GL_CULL_FACE); */
       glEnable(GL_DEPTH_TEST);
@@ -146,9 +149,9 @@ GLvoid init(GLvoid)
 
       glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, color);
 /*    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE); */
-      glColor4fv(color);
+/*       glColor4fv(color); */
     glMaterialfv(GL_FRONT, GL_SPECULAR, specular);
-   glMaterialf(GL_FRONT, GL_SHININESS, 0.7 * 128.0);
+   glMaterialf(GL_FRONT, GL_SHININESS, 0.3 * 128.0);
 
 
   calculate_vertices();
@@ -175,26 +178,25 @@ GLvoid init(GLvoid)
   glNewList(dlist, GL_COMPILE);
   gluTessBeginPolygon(tobj, NULL);
   gluTessBeginContour(tobj);
+     glNormal3f(0., 1., 0.); 
   for (i = 0; i < OVERTS; i++)
     {
-/*      glNormal3f(0., 0., 1.); */
+/*      glNormal3f(0., 1., 0.);  */
       gluTessVertex(tobj, outervertices[i], outervertices[i]);
     }
   gluTessEndContour(tobj);
-  gluTessBeginContour(tobj);
-  for (i = 0; i < IVERTS; i++)
-    {
-/*      glNormal3f(0., 0., 1.); */
-      gluTessVertex(tobj, hole1vertices[i], hole1vertices[i]);
-    }
-  gluTessEndContour(tobj);
-  gluTessBeginContour(tobj);
-  for (i = 0; i < IVERTS; i++)
-    {
-/*      glNormal3f(0., 0., 1.); */
-      gluTessVertex(tobj, hole2vertices[i], hole2vertices[i]);
-    }
-  gluTessEndContour(tobj);
+/*   gluTessBeginContour(tobj); */
+/*   for (i = 0; i < IVERTS; i++) */
+/*     { */
+/*       gluTessVertex(tobj, hole1vertices[i], hole1vertices[i]); */
+/*     } */
+/*   gluTessEndContour(tobj); */
+/*   gluTessBeginContour(tobj); */
+/*   for (i = 0; i < IVERTS; i++) */
+/*     { */
+/*       gluTessVertex(tobj, hole2vertices[i], hole2vertices[i]); */
+/*     } */
+/*   gluTessEndContour(tobj); */
   gluTessEndPolygon(tobj);
 
   glEndList();
@@ -235,12 +237,39 @@ GLvoid display(GLvoid)
   glPushMatrix();
             glRotatef(angle2, 1., 0., 0.);
             glRotatef(angle, 0., 1., 0.);
-/*   glLightfv(GL_LIGHT0, GL_POSITION, light_position); */
+  glLightfv(GL_LIGHT0, GL_POSITION, light_position);
  
+
+/* translation values are copied from calculate_vertices()
+ * scale factor comes from the obj file for the polyline contour,
+ * the one that is _supposed_ to coincide with the
+ * ground level of the crater basin (i.e. the basin's diameter)
+ */
+  glPushMatrix();
+  glTranslatef(2.0, -8., -1.5);
+  glRotatef(-90., 1., 0., 0.);
+  glScalef(HOLE1RADIUS / 0.36, HOLE1RADIUS / 0.36, HOLE1RADIUS / 0.36);
+   drawcrater4();
+   glPopMatrix();
+
+   /* put a second crater in an arbitrary place */
+  glPushMatrix();
+  glTranslatef(-22.5, -8., 12.7);
+  glRotatef(-90., 1., 0., 0.);
+  glScalef(1. / 0.36, 1. / 0.36, 1. / 0.36);
+   drawcrater4();
+   glPopMatrix();
+
+   /* mark the center of the ground circle */
+   glBegin(GL_LINES);
+   glVertex3f(0., -4., 0.);
+   glVertex3f(0., -12., 0.);
+   glEnd();
+
   glCallList(dlist);
 
-
  glPopMatrix();
+ 
 }
 
 GLvoid keyboard( GLubyte key, GLint x, GLint y)
@@ -288,3 +317,24 @@ int main( int argc, char *argv[] )
   return 0;
 }
 
+
+/* ========================================= */
+
+/* imperfections in the crater object are described in objtest.c */
+/* consider rescaling crater object to make scaling easier */
+
+
+/* consider simplifying program by keeping crater basin at ground level,
+ * thus not having to tesselate any holes in the ground  -->done, is crater 4
+ * also consider having non-overlapping craters for at least first release
+ *
+ * another option: make holes by texturing with alpha, 
+ * or by color keying with a shader
+ */
+
+
+/* despite a thin flat ring around the edge of the crater,
+ * seams between crater and ground still show
+ * they are much more visible looking straight down,
+ * less so from near ground level
+ */
